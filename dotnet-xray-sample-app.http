@@ -1,0 +1,6 @@
+@dotnet_xray_sample_app_HostAddress = http://localhost:5249
+
+GET {{dotnet_xray_sample_app_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
