@@ -28,7 +28,14 @@ var app = builder.Build();
 // Add X-Ray middleware
 app.UseXRay("MyApp");
 
-app.MapGet("/api/s3/list-buckets", async (IAmazonS3 s3Client) =>
+app.MapGet("/aws-sdk-call", async (IAmazonS3 s3Client) =>
+{
+    return await ListBuckets(s3Client);
+});
+
+app.Run();
+
+async Task<IResult> ListBuckets(IAmazonS3 s3Client)
 {
     try
     {
@@ -47,6 +54,4 @@ app.MapGet("/api/s3/list-buckets", async (IAmazonS3 s3Client) =>
     {
         return Results.Problem(ex.Message);
     }
-});
-
-app.Run();
+}
