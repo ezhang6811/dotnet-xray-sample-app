@@ -1,10 +1,14 @@
 using Amazon.S3;
 using Amazon.XRay.Recorder.Core;
+using Amazon.XRay.Recorder.Handlers.AwsSdk;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Trace all AWS SDK calls
+AWSSDKHandler.RegisterXRayForAllServices();
 
 // Add AWS SDK for S3
 builder.Services.AddSingleton<IAmazonS3>(serviceProvider =>
@@ -26,8 +30,6 @@ app.UseXRay("MyApp");
 
 app.MapGet("/api/s3/list-buckets", async (IAmazonS3 s3Client) =>
 {
-    AWSXRayRecorder.Instance.BeginSubsegment("ListS3Buckets");
-
     try
     {
         // List the S3 buckets
@@ -39,19 +41,11 @@ app.MapGet("/api/s3/list-buckets", async (IAmazonS3 s3Client) =>
             creation_date = bucket.CreationDate
         }).ToList();
 
-        // Add metadata to the subsegment
-        AWSXRayRecorder.Instance.AddAnnotation("bucket_count", buckets.Count);
-
         return Results.Ok(buckets);
     }
     catch (Exception ex)
     {
-        AWSXRayRecorder.Instance.AddException(ex);
         return Results.Problem(ex.Message);
-    }
-    finally
-    {
-        AWSXRayRecorder.Instance.EndSubsegment();
     }
 });
 
