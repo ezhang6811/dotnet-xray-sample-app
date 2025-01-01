@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Define variables
+PROJECT_DIR=$(pwd)
 LINUX_XRAY_URL="https://s3.us-east-2.amazonaws.com/aws-xray-assets.us-east-2/xray-daemon/aws-xray-daemon-linux-3.x.zip"
 MACOS_XRAY_URL="https://s3.us-east-2.amazonaws.com/aws-xray-assets.us-east-2/xray-daemon/aws-xray-daemon-macos-3.x.zip"
 XRAY_DAEMON_DIR="$HOME/xray-daemon"
@@ -8,9 +9,10 @@ XRAY_DAEMON_BINARY=""
 SERVER_PORT=8080
 MANUAL_TRACE_ENDPOINT="http://localhost:${SERVER_PORT}/generate-manual-traces"
 AUTOMATIC_TRACE_ENDPOINT="http://localhost:${SERVER_PORT}/generate-automatic-traces"
+XRAY_SDK_REPO="github.com/aws/aws-xray-sdk-dotnet"
 
 # Prompt user for the commit hash or default to "latest"
-read -p "Enter the commit hash of the AWS X-Ray Go SDK to test (or press Enter to use 'latest'): " COMMIT_HASH
+read -p "Enter the commit hash of the AWS X-Ray .NET SDK to test (or press Enter to use 'latest'): " COMMIT_HASH
 if [ -z "$COMMIT_HASH" ]; then
     COMMIT_HASH="latest"
     echo "Using the latest commit of the AWS X-Ray SDK."
@@ -86,6 +88,20 @@ echo "Detected OS: $OS"
 echo "Using X-Ray daemon URL: $XRAY_URL"
 echo "Using AWS region: $REGION"
 
+# Use the AWS X-Ray SDK on the specified commit hash
+echo "Cloning the AWS X-Ray SDK repo locally...:"
+git clone https://$XRAY_SDK_REPO $HOME/aws-xray-sdk-dotnet || { echo "Failed to clone the AWS X-Ray SDK repo"; exit 1; }
+cd $HOME/aws-xray-sdk-dotnet
+if [ "$COMMIT_HASH" != "latest" ]; then
+    echo "Checking out the specified commit hash..."
+    git checkout $COMMIT_HASH || { echo "Failed to checkout commit hash"; exit 1; }
+fi
+cd $PROJECT_DIR
+dotnet add reference $HOME/aws-xray-sdk-dotnet/sdk/src/Core/AWSXRayRecorder.Core.csproj
+dotnet add reference $HOME/aws-xray-sdk-dotnet/sdk/src/Handlers/AspNetCore/AWSXrayRecorder.Handlers.AspNetCore.csproj
+dotnet add reference $HOME/aws-xray-sdk-dotnet/sdk/src/Handlers/AwsSdk/AWSXRayRecorder.Handlers.AwsSdk.csproj
+echo "AWS X-Ray SDK added to the project."
+
 # Check for existing X-Ray daemon
 existing_daemon_pid=$(lsof -ti:2000)
 if [ -n "$existing_daemon_pid" ]; then
@@ -119,8 +135,7 @@ sleep 5
 # Start the server
 echo "Starting the server..."
 dotnet run &
-SERVER_PID=$!
-echo "Server started with PID: $SERVER_PID"
+echo "Server running!"
 
 # Wait for server to initialize
 echo "Waiting for server to be ready..."
@@ -162,6 +177,8 @@ sleep 5
 
 # Stop the server and X-Ray daemon
 echo "Stopping the server..."
+dotnet build-server shutdown
+SERVER_PID=$(lsof -ti:$SERVER_PORT)
 kill -9 $SERVER_PID
 
 echo "Stopping the X-Ray daemon..."
@@ -172,6 +189,12 @@ echo "Traces should now be visible in the AWS X-Ray Console."
 echo "Visit the X-Ray Console and filter traces by service name."
 
 # Cleanup 
+echo "Removing references to AWS X-Ray SDK..."
+dotnet remove reference $HOME/aws-xray-sdk-dotnet/sdk/src/Core/AWSXRayRecorder.Core.csproj
+dotnet remove reference $HOME/aws-xray-sdk-dotnet/sdk/src/Handlers/AspNetCore/AWSXrayRecorder.Handlers.AspNetCore.csproj
+dotnet remove reference $HOME/aws-xray-sdk-dotnet/sdk/src/Handlers/AwsSdk/AWSXRayRecorder.Handlers.AwsSdk.csproj
+rm -rf $HOME/aws-xray-sdk-dotnet
+echo "AWS X-Ray SDK references removed."
 echo "Cleaning up X-Ray daemon files..."
 rm -rf $HOME/xray-daemon
 echo "X-Ray daemon files removed."
